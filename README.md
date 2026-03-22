@@ -131,6 +131,21 @@ app/
 static/                       # Dashboard (Leaflet.js + Chart.js via CDN, zero build step)
 ```
 
+## Technical Stack
+
+| Component | Technology | Role |
+|-----------|-----------|------|
+| Backend | Python 3.11+ / FastAPI | REST API, scenario generation, algorithm execution |
+| Solver | `scipy.optimize.linear_sum_assignment` | Hungarian algorithm for optimal bipartite matching |
+| Numerics | NumPy | Distance matrices, cost computation, stochastic sampling |
+| Data models | Pydantic v2 | Typed domain models with validation |
+| Map | Leaflet.js (CDN) | Interactive route visualization, facility/driver markers |
+| Charts | Chart.js (CDN) | Metric comparison bar/doughnut charts |
+| Distance | Haversine formula × 1.4 road factor | Great-circle distance approximation for NYC grid |
+| Route optimization | Nearest-neighbor + 2-opt | Per-driver TSP heuristic for multi-stop sequences |
+
+**No external mapping API** (Google Maps, Mapbox, OSRM) — distance is computed geometrically. No commercial VRP solver (OR-Tools, OptaPlanner). No database — all state is in-memory per request. Zero frontend build step — HTML + JS served as static files via FastAPI.
+
 ## Dependencies
 
 FastAPI, Uvicorn, scipy, numpy, pydantic. Frontend via CDN (Leaflet.js, Chart.js).

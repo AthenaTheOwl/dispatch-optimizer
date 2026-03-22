@@ -165,7 +165,7 @@
             <div class="howto-container">
                 <div class="howto-section">
                     <h2>How DispatchIQ Works</h2>
-                    <p class="howto-subtitle">End-to-end walkthrough of the simulation, domain model, and algorithms.</p>
+                    <p class="howto-subtitle">End-to-end walkthrough of the problem formulation, simulation design, technical stack, algorithms, and assumptions.</p>
                 </div>
 
                 <div class="howto-section">
@@ -183,67 +183,130 @@
                 </div>
 
                 <div class="howto-section">
-                    <h3>2. Cargo Types</h3>
-                    <p>Not all packages are the same. Each cargo type has specific handling requirements:</p>
+                    <h3>2. Domain Model</h3>
+                    <p>The data model has a <strong>two-level structure</strong>: an <strong>Order</strong> represents a single pickup event at one location, containing one or more <strong>Packages</strong>, each with its own cargo type, temperature regime, and destination.</p>
+
+                    <h4>Cargo Types</h4>
+                    <p>Each cargo type has specific temperature handling requirements and deadline constraints:</p>
                     <table class="howto-table">
                         <thead>
-                            <tr><th>Cargo Type</th><th>Temperature</th><th>Typical Deadline</th></tr>
+                            <tr><th>Cargo Type</th><th>Temperature</th><th>Typical Deadline</th><th>Notes</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>Standard</td><td class="temp-ambient">Ambient (15-25&deg;C)</td><td>4 hours</td></tr>
-                            <tr><td>Time-Critical</td><td class="temp-ambient">Ambient</td><td class="deadline-tight">30 minutes</td></tr>
-                            <tr><td>Bulk</td><td class="temp-ambient">Ambient</td><td>24 hours</td></tr>
-                            <tr><td>Fragile</td><td class="temp-cold">Refrigerated (2-8&deg;C)</td><td>6 hours</td></tr>
-                            <tr><td>Sensitive</td><td class="temp-ambient">Ambient (must not freeze)</td><td>24 hours</td></tr>
-                            <tr><td>Cold Chain</td><td class="temp-frozen">Frozen (-20&deg;C)</td><td>24 hours</td></tr>
-                            <tr><td>Ultra-Cold</td><td class="temp-cryo">Cryogenic (-80&deg;C)</td><td>Varies</td></tr>
+                            <tr><td>Standard</td><td class="temp-ambient">Ambient (15-25&deg;C)</td><td>4 hours</td><td>Most common, no special equipment needed</td></tr>
+                            <tr><td>Time-Critical</td><td class="temp-ambient">Ambient</td><td class="deadline-tight">30 minutes</td><td>Degrades rapidly &mdash; zero pooling slack</td></tr>
+                            <tr><td>Bulk</td><td class="temp-ambient">Ambient</td><td>24 hours</td><td>High volume, flexible deadline</td></tr>
+                            <tr><td>Fragile</td><td class="temp-cold">Refrigerated (2-8&deg;C)</td><td>6 hours</td><td>Requires careful handling, cooler required</td></tr>
+                            <tr><td>Sensitive</td><td class="temp-ambient">Ambient (must not freeze)</td><td>24 hours</td><td>Cannot co-transport with frozen items</td></tr>
+                            <tr><td>Cold Chain</td><td class="temp-frozen">Frozen (-20&deg;C)</td><td>24 hours</td><td>Requires frozen transport capability</td></tr>
+                            <tr><td>Ultra-Cold</td><td class="temp-cryo">Cryogenic (-80&deg;C)</td><td>Varies</td><td>Rare, high-value, requires specialized equipment</td></tr>
                         </tbody>
                     </table>
-                </div>
 
-                <div class="howto-section">
-                    <h3>3. Multi-Destination Pickups</h3>
-                    <p>A key insight: <strong>one pickup location may generate multiple packages going to different destinations</strong>. Facility A submits an order with 3 packages:</p>
+                    <h4>Multi-Destination Pickups</h4>
+                    <p>A key structural feature: <strong>one pickup location may generate multiple packages going to different destinations</strong>. Example:</p>
                     <div class="howto-example">
-                        <div class="example-item">Item 1 &rarr; Destination A (Midtown)</div>
-                        <div class="example-item">Item 2 &rarr; Destination B (Brooklyn)</div>
-                        <div class="example-item">Item 3 &rarr; Destination C (Queens)</div>
+                        <div class="example-item">Package 1 (Standard) &rarr; Destination A</div>
+                        <div class="example-item">Package 2 (Fragile, refrigerated) &rarr; Destination B</div>
+                        <div class="example-item">Package 3 (Standard) &rarr; Destination C</div>
                     </div>
-                    <p><strong>Today:</strong> 3 separate dispatches to the same pickup location.<br>
-                    <strong>DispatchIQ:</strong> 1 driver, 1 pickup, optimized 3-stop delivery route.</p>
-                    <p>This is modeled as an <strong>Order</strong> (one pickup) containing multiple <strong>Packages</strong> (each with its own cargo type, temperature regime, and destination).</p>
-                </div>
+                    <p><strong>Without optimization:</strong> 3 separate driver dispatches to the same pickup location.<br>
+                    <strong>With DispatchIQ:</strong> 1 driver, 1 pickup, optimized 3-stop delivery route. This is where the largest cost savings come from.</p>
 
-                <div class="howto-section">
-                    <h3>4. Driver Capabilities</h3>
-                    <p>Drivers aren't interchangeable. Each has specific equipment and certifications:</p>
+                    <h4>Driver Capabilities</h4>
+                    <p>Drivers are heterogeneous. Each has specific equipment and certifications that create hard constraints on which orders they can serve:</p>
                     <table class="howto-table">
                         <thead>
-                            <tr><th>Attribute</th><th>Options</th><th>Why It Matters</th></tr>
+                            <tr><th>Attribute</th><th>Options</th><th>Impact on Assignment</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>Vehicle</td><td>Bike, Car, Van</td><td>Determines speed, capacity (4 to 20 packages), parking ease</td></tr>
-                            <tr><td>Cold Storage</td><td>None, Cooler, Active Fridge, Cryo</td><td><strong>Hard constraint:</strong> must match cargo temp regime</td></tr>
-                            <tr><td>Certifications</td><td>Basic, Hazmat, Cold-Chain</td><td><strong>Hard constraint:</strong> elevated-hazard items need hazmat certification</td></tr>
-                            <tr><td>Shift Window</td><td>Morning, Full Day, Afternoon</td><td>Can't assign orders that push past shift end</td></tr>
+                            <tr><td>Vehicle</td><td>Bike, Car, Van</td><td>Speed (18-25 km/h), capacity (4-20 packages), urban mobility</td></tr>
+                            <tr><td>Temperature Equipment</td><td>None, Cooler, Active Fridge, Cryogenic</td><td><strong>Hard constraint:</strong> must support all temperature regimes in the order. Higher-level equipment can handle lower requirements.</td></tr>
+                            <tr><td>Certifications</td><td>Basic, Hazmat, Cold-Chain</td><td><strong>Hard constraint:</strong> elevated-hazard items require hazmat certification</td></tr>
+                            <tr><td>Shift Window</td><td>Morning (7am-3pm), Full Day (7am-7pm), Afternoon (11am-7pm)</td><td>Cannot assign orders whose estimated completion exceeds shift end</td></tr>
+                            <tr><td>Current Load</td><td>0-N packages</td><td>Reduces available capacity; some drivers start mid-route</td></tr>
                         </tbody>
                     </table>
-                    <p>A cryo-equipped driver is a scarce resource. Wasting a high-capability driver on a standard-tier order means the actual cryo cargo has no one to carry it.</p>
+                    <p>Specialized equipment (e.g., cryogenic-capable vehicles) is scarce. A key optimization challenge is avoiding <em>over-qualification</em> &mdash; assigning a high-capability driver to a standard-tier order, leaving no capable driver for the order that actually needs that equipment.</p>
                 </div>
 
                 <div class="howto-section">
-                    <h3>5. The Simulator</h3>
-                    <p>The simulation uses <strong>real NYC coordinates</strong> for hubs, branches, destinations, and satellites plotted on OpenStreetMap. Here's what's generated:</p>
+                    <h3>3. Hard Constraints</h3>
+                    <p>Every driver-order assignment is checked against six hard constraints. If any fails, the assignment is infeasible (cost = &infin; in the optimization):</p>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Constraint</th><th>Check</th><th>Why It Matters</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Temperature Equipment</td><td>Driver's equipment &supseteq; all temperature regimes in the order</td><td>A cooler-equipped driver cannot carry frozen items</td></tr>
+                            <tr><td>Certifications</td><td>Driver has required certs (e.g., hazmat for elevated-hazard items)</td><td>Regulatory compliance</td></tr>
+                            <tr><td>Capacity</td><td>Driver's remaining capacity &ge; number of packages</td><td>Physical vehicle limits (4 for bikes, 12 for cars, 20 for vans)</td></tr>
+                            <tr><td>Availability</td><td>Driver status is Available or En-Route (not Offline)</td><td>Can't assign to inactive drivers</td></tr>
+                            <tr><td>Shift Window</td><td>Estimated completion time &le; shift end</td><td>Labor constraints</td></tr>
+                            <tr><td>Deadline Feasibility</td><td>Pessimistic (80th percentile) travel estimate meets all package deadlines</td><td>Service level guarantee &mdash; uses conservative time estimates</td></tr>
+                        </tbody>
+                    </table>
+                    <p>Additionally, <strong>temperature compatibility</strong> is checked for pooled orders: items flagged "must not freeze" cannot share a vehicle with frozen or cryogenic items.</p>
+                </div>
+
+                <div class="howto-section">
+                    <h3>4. The Simulator</h3>
+                    <p>The simulation generates realistic scenarios using configurable probability distributions over <strong>real NYC coordinates</strong>.</p>
+
+                    <h4>Facility Network</h4>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Facility Type</th><th>Count</th><th>Role</th><th>Coverage</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Hubs</td><td>8</td><td>High-volume pickup origins</td><td>Manhattan, Brooklyn, Queens</td></tr>
+                            <tr><td>Branches</td><td>12</td><td>Medium-volume pickup origins</td><td>Distributed across all boroughs</td></tr>
+                            <tr><td>Destinations</td><td>6</td><td>Delivery endpoints</td><td>Manhattan, Brooklyn, Queens</td></tr>
+                            <tr><td>Satellites</td><td>3</td><td>Low-volume origins (outer areas)</td><td>Washington Heights, Brooklyn, Queens</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h4>Order Generation</h4>
                     <ul class="howto-list">
-                        <li><strong>Facilities:</strong> 8 hubs, 12 branches across Manhattan/Brooklyn/Queens, 6 destinations (Destination A, Destination B, Destination C), 3 satellites</li>
-                        <li><strong>Orders:</strong> Arrive in waves &mdash; morning rush (7-9am, 40%), midday (25%), afternoon spike (25%), late (10%)</li>
-                        <li><strong>Cargo mix:</strong> Standard 45%, Bulk 20%, Fragile 10%, Sensitive 10%, Cold Chain 10%, Ultra-Cold 5%</li>
-                        <li><strong>Urgency:</strong> STAT 15%, Urgent 25%, Routine 45%, Standard 15%</li>
-                        <li><strong>Multi-destination:</strong> 40% of orders have 1 package, 30% have 2, 20% have 3, 10% have 4</li>
-                        <li><strong>Drivers:</strong> 60% cars, 25% vans, 15% bikes. 40% ambient-only, 30% cooler, 20% active fridge, 10% cryo</li>
+                        <li><strong>Arrival pattern:</strong> Wave-based &mdash; morning rush (7-9am, 40%), midday (10am-1pm, 25%), afternoon spike (2-4pm, 25%), late afternoon (4-6pm, 10%)</li>
+                        <li><strong>Cargo mix:</strong> Standard 40%, Bulk 20%, Fragile 10%, Sensitive 10%, Cold Chain 10%, Time-Critical 5%, Ultra-Cold 5%</li>
+                        <li><strong>Urgency distribution:</strong> STAT 15% (&le;1hr), Urgent 25% (&le;2hr), Routine 45% (&le;4hr), Standard 15% (next-day)</li>
+                        <li><strong>Packages per order:</strong> 1 (40%), 2 (30%), 3 (20%), 4 (10%) &mdash; each package may go to a different destination</li>
+                        <li><strong>Hazard class:</strong> ~5% of items are elevated-hazard (require hazmat certification)</li>
                     </ul>
-                    <h4>Distance Model</h4>
-                    <p>Travel distances use the <strong>Haversine formula</strong> (great-circle distance) multiplied by a <strong>1.4 road factor</strong> to approximate actual road distance in NYC's grid. Travel time assumes 25 km/h average urban speed (18 for bikes, 22 for vans). Deadline feasibility uses the <strong>80th percentile</strong> of a log-normal travel time distribution &mdash; conservative estimates that account for traffic, parking, and handoff variability.</p>
+
+                    <h4>Driver Fleet Generation</h4>
+                    <ul class="howto-list">
+                        <li><strong>Vehicles:</strong> 60% cars, 25% vans, 15% bikes (bikes cannot have cryogenic equipment)</li>
+                        <li><strong>Temperature equipment:</strong> 40% none (ambient only), 30% cooler, 20% active fridge, 10% cryogenic</li>
+                        <li><strong>Certifications:</strong> All have basic; ~30% have hazmat; ~40% with temperature equipment have cold-chain training</li>
+                        <li><strong>Shifts:</strong> 40% morning (7am-3pm), 35% full day (7am-7pm), 25% afternoon (11am-7pm)</li>
+                        <li><strong>Starting state:</strong> 85% available at scattered city positions; 15% already en-route with partial loads</li>
+                    </ul>
+                </div>
+
+                <div class="howto-section">
+                    <h3>5. Technical Stack &amp; Tools</h3>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Component</th><th>Technology</th><th>Purpose</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Backend</td><td><strong>Python 3.11+ / FastAPI</strong></td><td>REST API, scenario management, algorithm execution</td></tr>
+                            <tr><td>Solver</td><td><strong>scipy.optimize.linear_sum_assignment</strong></td><td>Hungarian algorithm for optimal bipartite matching (O(n&sup3;))</td></tr>
+                            <tr><td>Numerics</td><td><strong>NumPy</strong></td><td>Cost matrix construction, distance calculations</td></tr>
+                            <tr><td>Stochastic Model</td><td><strong>scipy.stats (log-normal)</strong></td><td>Travel time variability; deadline feasibility at 80th percentile</td></tr>
+                            <tr><td>Data Models</td><td><strong>Pydantic v2</strong></td><td>Typed domain models with validation</td></tr>
+                            <tr><td>Map Rendering</td><td><strong>Leaflet.js 1.9</strong> (CDN)</td><td>Interactive map with OpenStreetMap / CartoDB dark tiles</td></tr>
+                            <tr><td>Charts</td><td><strong>Chart.js 4.4</strong> (CDN)</td><td>Metrics visualization</td></tr>
+                            <tr><td>Distance Model</td><td><strong>Haversine formula &times; 1.4 road factor</strong></td><td>Approximates road distance from great-circle distance (~15% accuracy for NYC grid)</td></tr>
+                            <tr><td>Route Optimizer</td><td><strong>Nearest-neighbor + 2-opt</strong> (custom)</td><td>Per-driver TSP with pickup-before-delivery precedence constraints</td></tr>
+                        </tbody>
+                    </table>
+                    <p><strong>No external mapping API is used.</strong> All distances are computed mathematically from coordinates. A production system would integrate OSRM, Google Directions API, or Mapbox for real road network routing, turn-by-turn distance, and live traffic data.</p>
+                    <p><strong>No commercial VRP solver is used.</strong> The prototype uses scipy's Hungarian algorithm (optimal for bipartite assignment) paired with custom nearest-neighbor + 2-opt heuristics for route optimization. A production system would use <strong>Google OR-Tools</strong> or a similar solver for joint assignment + routing + pooling optimization.</p>
+                    <p><strong>No database.</strong> Scenarios are held in memory for the session. A production system would persist to PostgreSQL or similar.</p>
+                    <p><strong>Zero build step.</strong> Frontend is vanilla HTML/CSS/JS with CDN dependencies. No React, no Webpack, no npm.</p>
                 </div>
 
                 <div class="howto-section">
@@ -257,18 +320,19 @@
                         <li>Score each eligible driver considering:
                             <ul>
                                 <li><strong>Distance</strong> (primary factor &mdash; the dispatcher looks at the map)</li>
-                                <li><strong>Deadline feasibility</strong> &mdash; heavily penalizes drivers who'd likely miss the deadline, gets cautious about tight ones (&lt;15 min slack)</li>
-                                <li><strong>Equipment match</strong> &mdash; prefers not to waste a high-capability driver on a standard-tier order (but isn't perfect at this, especially under pressure)</li>
+                                <li><strong>Deadline feasibility</strong> &mdash; heavily penalizes drivers who'd likely miss the deadline (+50 penalty if infeasible, +5 if &lt;15 min slack)</li>
+                                <li><strong>Equipment match</strong> &mdash; penalizes over-qualification (+3 if 2+ levels above needed, +0.5 for 1 level above)</li>
                             </ul>
                         </li>
                         <li>Pick the best-scoring driver. Move to the next order.</li>
                     </ol>
+                    <p><strong>Scoring formula:</strong> <code>score = distance_km + deadline_penalty + equipment_penalty</code></p>
 
-                    <p><strong>Where it still falls short</strong> (inherent limitations of sequential, one-at-a-time human decision-making):</p>
+                    <p><strong>Where it still falls short</strong> (inherent limitations of sequential decision-making):</p>
                     <ul class="howto-list">
-                        <li><strong>No global view:</strong> Each assignment is locally rational but globally suboptimal. Assigning Driver A here &mdash; even with good equipment awareness &mdash; might leave no feasible option for Order Y arriving 10 minutes later. A human can't hold all N&times;M possibilities in their head.</li>
-                        <li><strong>Equipment preference, not optimization:</strong> The dispatcher <em>tries</em> not to waste the cryo driver, but under time pressure or when there are many orders, they'll still make suboptimal equipment matches. The Hungarian algorithm guarantees globally optimal equipment allocation.</li>
-                        <li><strong>No delivery route optimization:</strong> When an order has 3 packages going to 3 different destinations, the dispatcher just sends the driver in the order the destinations come up. The optimal algorithm uses nearest-neighbor + 2-opt to find the shortest delivery sequence.</li>
+                        <li><strong>No global view:</strong> Each assignment is locally rational but globally suboptimal. Assigning Driver A here might leave no feasible option for Order Y arriving 10 minutes later. A human can't hold all N&times;M possibilities in their head.</li>
+                        <li><strong>Equipment preference, not optimization:</strong> The dispatcher <em>tries</em> to match equipment levels, but under time pressure still makes suboptimal matches. The Hungarian algorithm guarantees globally optimal equipment allocation across all orders simultaneously.</li>
+                        <li><strong>No delivery route optimization:</strong> When an order has 3 packages going to 3 different destinations, the dispatcher sends the driver in the order the destinations appear. The optimal algorithm uses nearest-neighbor + 2-opt to find the shortest delivery sequence.</li>
                         <li><strong>No pooling:</strong> Every order gets its own dedicated driver. Two facilities 500m apart each get separate drivers, even though one trip could serve both.</li>
                         <li><strong>Deadline slack isn't weighed against future demand:</strong> The dispatcher doesn't think "this Routine order has 3 hours of slack, so I should save this nearby driver for the STAT that's likely coming in 20 minutes."</li>
                     </ul>
@@ -276,83 +340,164 @@
 
                 <div class="howto-section">
                     <h3>7. Algorithm 2: Hungarian Optimal Assignment</h3>
-                    <p>Uses the <strong>Hungarian algorithm</strong> (scipy.optimize.linear_sum_assignment) to find the globally optimal driver-to-order matching:</p>
+                    <p>Uses <strong>scipy.optimize.linear_sum_assignment</strong> (the Hungarian/Kuhn-Munkres algorithm) to find the globally optimal driver-to-order matching:</p>
+
+                    <h4>Step 1: Build Cost Matrix (N<sub>drivers</sub> &times; M<sub>orders</sub>)</h4>
+                    <p>Each cell C[i][j] represents the total cost of assigning driver i to order j. The cost function is a weighted combination:</p>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Component</th><th>Weight</th><th>Description</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Distance to pickup</td><td>&times; urgency multiplier</td><td>STAT=3x, Urgent=2x, Routine=1x, Standard=0.8x</td></tr>
+                            <tr><td>Infeasibility</td><td>10<sup>6</sup></td><td>If any hard constraint is violated, cost is effectively infinite</td></tr>
+                            <tr><td>Deadline risk</td><td>10 per minute</td><td>Proportional to minutes of negative slack (pessimistic estimate)</td></tr>
+                            <tr><td>Shift overtime</td><td>500</td><td>Flat penalty if estimated completion exceeds shift end</td></tr>
+                            <tr><td>Over-qualification</td><td>5 per level</td><td>Penalizes wasting specialized equipment on orders that don't need it</td></tr>
+                            <tr><td>Delivery route distance</td><td>&times; 0.5</td><td>Estimated multi-destination delivery distance (discounted)</td></tr>
+                        </tbody>
+                    </table>
+
+                    <h4>Step 2: Solve</h4>
+                    <p>The Hungarian algorithm finds the assignment that minimizes total cost across ALL driver-order pairs simultaneously. It runs in O(n&sup3;) time and guarantees the global optimum for the linear assignment problem. The matrix is padded to square if N &ne; M.</p>
+
+                    <h4>Step 3: Optimize Delivery Routes</h4>
+                    <p>For each assigned driver with multi-destination deliveries:</p>
                     <ol class="howto-list">
-                        <li><strong>Build a cost matrix</strong> (drivers &times; orders) where each cell represents the "cost" of assigning that driver to that order</li>
-                        <li><strong>Cost function</strong> considers multiple factors:
+                        <li><strong>Nearest-neighbor construction:</strong> Build an initial route visiting the closest unvisited stop, respecting pickup-before-delivery precedence</li>
+                        <li><strong>2-opt improvement:</strong> Iteratively reverse route segments to eliminate crossings, checking precedence constraints on each swap. Continues until no improving swap is found (up to 100 iterations).</li>
+                    </ol>
+                </div>
+
+                <div class="howto-section">
+                    <h3>8. Pooling &amp; Insertion</h3>
+                    <p><strong>Order Pooling:</strong> Groups nearby compatible orders into batches before assignment. A driver picking up from Facility A can also service Facility B (0.5 km away) on the same trip.</p>
+                    <h4>Pooling Criteria</h4>
+                    <ul class="howto-list">
+                        <li>Pickup locations within 2 km of each other</li>
+                        <li>Temperature-compatible cargo (items flagged "must not freeze" cannot ride with frozen items)</li>
+                        <li>Combined package count fits within driver capacity</li>
+                        <li>All orders in the batch can still meet their individual deadlines given the multi-stop route</li>
+                    </ul>
+                    <h4>Slack-Based Holding</h4>
+                    <p>Orders with sufficient slack can be held briefly, waiting for a pooling opportunity:</p>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Urgency</th><th>Hold Time</th><th>Rationale</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>STAT</td><td>0 minutes</td><td>Dispatch immediately, never hold</td></tr>
+                            <tr><td>Urgent</td><td>5 minutes</td><td>Short hold, pool only if match already available</td></tr>
+                            <tr><td>Routine</td><td>20 minutes</td><td>Actively look for nearby orders to batch</td></tr>
+                            <tr><td>Standard</td><td>60 minutes</td><td>Maximum pooling opportunity</td></tr>
+                        </tbody>
+                    </table>
+                    <p>This is analogous to how ride-sharing platforms briefly hold delivery orders waiting for a second nearby pickup to batch on the same trip.</p>
+
+                    <h4>Cheapest Insertion</h4>
+                    <p>When a new order arrives while drivers are mid-route, the system evaluates inserting it into an existing route vs. dispatching a new driver:</p>
+                    <ol class="howto-list">
+                        <li>For each active driver route, find the position that adds minimum extra distance for the new pickup + delivery stops</li>
+                        <li>Verify that insertion doesn't cause any existing order on that route to miss its deadline (cascade check)</li>
+                        <li>Compare best insertion cost vs. cost of dispatching a new idle driver</li>
+                        <li>If insertion is cheaper and feasible &rarr; insert; otherwise &rarr; new dispatch</li>
+                    </ol>
+                </div>
+
+                <div class="howto-section">
+                    <h3>9. Distance &amp; Travel Time Model</h3>
+                    <p>The distance model is intentionally simplified for the prototype, with each simplification representing a known upgrade path:</p>
+
+                    <h4>Distance Calculation</h4>
+                    <ul class="howto-list">
+                        <li><strong>Formula:</strong> <code>road_distance = haversine(A, B) &times; 1.4</code></li>
+                        <li><strong>Haversine</strong> computes great-circle distance between two lat/lng coordinates using the WGS-84 earth radius (6,371 km)</li>
+                        <li><strong>Road factor of 1.4</strong> accounts for the grid street layout vs. straight-line distance. For NYC's Manhattan grid, this is within ~15% of actual road distance. Suburban areas would need a higher factor (~1.6-1.8).</li>
+                        <li><strong>No routing API is called.</strong> OSRM, Google Directions, or Mapbox would provide actual road network distances, turn penalties, and one-way street routing.</li>
+                    </ul>
+
+                    <h4>Travel Time</h4>
+                    <ul class="howto-list">
+                        <li><strong>Base speed:</strong> Cars 25 km/h, Vans 22 km/h, Bikes 18 km/h &mdash; reasonable NYC urban averages</li>
+                        <li><strong>Deterministic time:</strong> <code>base_time = road_distance / speed &times; 60</code> (minutes)</li>
+                        <li><strong>Stochastic variability:</strong> Travel times are modeled as <strong>log-normal distributions</strong> around the base time. The log-normal is chosen because travel times are always positive, right-skewed (traffic jams create long tails), and multiplicative (delays compound).
                             <ul>
-                                <li>Distance to pickup &times; urgency multiplier (STAT = 3x weight)</li>
-                                <li>Infinity (&infin;) if hard constraints are violated (wrong equipment, no cert, over capacity)</li>
-                                <li>Deadline risk penalty (proportional to minutes of negative slack)</li>
-                                <li>Over-qualification penalty (don't waste cryo driver on ambient orders)</li>
-                                <li>Multi-destination delivery route distance</li>
+                                <li>Normal conditions: CV = 0.20 (coefficient of variation)</li>
+                                <li>Rush hour: CV = 0.35</li>
                             </ul>
                         </li>
-                        <li><strong>Solve</strong>: Hungarian algorithm finds the assignment that minimizes total cost across ALL driver-order pairs simultaneously (O(n&sup3;) time)</li>
-                        <li><strong>Optimize routes</strong>: For each assigned driver, use <strong>nearest-neighbor + 2-opt</strong> to find the best delivery stop sequence</li>
-                    </ol>
-                    <p>The 2-opt improvement iteratively swaps pairs of edges in the route to eliminate crossings, respecting the constraint that pickups must come before their corresponding deliveries.</p>
+                        <li><strong>Pessimistic estimates:</strong> Deadline feasibility checks use the <strong>80th percentile</strong> of the log-normal distribution, computed analytically via <code>scipy.stats.norm.ppf(0.80)</code>. This means the algorithm builds routes that succeed 80% of the time, not just on average.</li>
+                    </ul>
+
+                    <h4>Stop Buffer Times</h4>
+                    <ul class="howto-list">
+                        <li><strong>Pickup:</strong> 5 minutes (loading, paperwork, verification)</li>
+                        <li><strong>Delivery:</strong> 3 minutes per destination (unloading, handoff)</li>
+                        <li>These are configurable constants, not learned from data</li>
+                    </ul>
                 </div>
 
                 <div class="howto-section">
-                    <h3>8. Pooling &amp; Insertion (Advanced)</h3>
-                    <p><strong>Order Pooling:</strong> Groups nearby compatible orders into batches. A driver picking up from Branch A can also grab items from Branch B (0.5 km away) on the same trip. Pooling criteria:</p>
-                    <ul class="howto-list">
-                        <li>Pickup locations within 2 km</li>
-                        <li>Temperature-compatible items (can't pool "must not freeze" sensitive items with frozen items)</li>
-                        <li>Combined packages fit within driver capacity</li>
-                    </ul>
-                    <p><strong>Slack-based holding:</strong> Routine orders can wait 15-30 minutes for a pooling match. STAT orders dispatch immediately. This mimics how UberEats holds your order for a minute waiting for a second delivery nearby.</p>
-                    <p><strong>Cheapest Insertion:</strong> When a new order arrives while drivers are mid-route, the system evaluates inserting it into an existing route vs. dispatching a new driver. If the detour is small and deadlines still met, it inserts &mdash; saving a whole dispatch.</p>
-                </div>
-
-                <div class="howto-section">
-                    <h3>9. Assumptions &amp; Simplifications</h3>
-                    <p>This is a simulation prototype, not a production system. The following assumptions and simplifications are made intentionally &mdash; each represents a known upgrade path:</p>
-
-                    <h4>Distance &amp; Travel Time</h4>
-                    <ul class="howto-list">
-                        <li><strong>No real routing API:</strong> Distances use the Haversine formula (great-circle) &times; 1.4 road factor. For NYC's grid street layout, this approximates actual road distance within ~15%. A production system would use OSRM, Google Maps, or Mapbox for exact routing.</li>
-                        <li><strong>Constant base speed:</strong> 25 km/h for cars, 22 for vans, 18 for bikes &mdash; reasonable NYC urban averages. No time-of-day traffic model. However, <strong>stochastic variability</strong> is modeled: travel times are sampled from a log-normal distribution (CV=0.20 normal, 0.35 rush hour) to capture real-world uncertainty.</li>
-                        <li><strong>Conservative feasibility:</strong> Deadline checks use the <strong>80th percentile</strong> of the travel time distribution, not the mean. This means the algorithm won't create routes that only work if everything goes perfectly.</li>
-                        <li><strong>Stop buffer times:</strong> 5 minutes per pickup (handoff, paperwork, scanning) and 3 minutes per delivery. These are configurable constants, not measured from data.</li>
-                    </ul>
+                    <h3>10. Assumptions &amp; Simplifications</h3>
+                    <p>This is a simulation prototype. The following assumptions are made intentionally, each with a clear production upgrade path:</p>
 
                     <h4>Scenario Structure</h4>
-                    <ul class="howto-list">
-                        <li><strong>Static snapshot:</strong> All orders and drivers are known at scenario generation time. In production, orders arrive dynamically &mdash; the insertion algorithm handles this, but the demo runs in batch mode for clarity.</li>
-                        <li><strong>No central depot:</strong> Drivers start at scattered positions across the city (some already en-route). This is more realistic than a single-depot model but means there's no "return to base" cost.</li>
-                        <li><strong>One order per driver (greedy):</strong> The greedy baseline assigns exactly one order per driver. The optimal algorithm does the same for fair comparison, but the pooling module demonstrates multi-order batching separately.</li>
-                        <li><strong>Generated data, not historical:</strong> Order arrival patterns (wave-based), cargo type mix, urgency distribution, and driver capabilities are generated from configured probability distributions &mdash; not learned from real operational data. The distributions are based on industry-typical patterns.</li>
-                    </ul>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Assumption</th><th>Implication</th><th>Production Upgrade</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Static batch scenario</td><td>All orders and drivers known at generation time</td><td>Dynamic arrival with real-time insertion algorithm</td></tr>
+                            <tr><td>No central depot</td><td>Drivers start at scattered positions, no return-to-base cost</td><td>Depot modeling with end-of-shift return routing</td></tr>
+                            <tr><td>One order per driver</td><td>Both algorithms assign at most one order per driver for fair comparison</td><td>Pooling module enables multi-order routes</td></tr>
+                            <tr><td>Generated data</td><td>Probability distributions, not historical operational data</td><td>Learn distributions from real data; demand forecasting</td></tr>
+                            <tr><td>Fixed facility locations</td><td>29 facilities at real NYC coordinates</td><td>Dynamic facility onboarding, coverage optimization</td></tr>
+                        </tbody>
+                    </table>
 
-                    <h4>Constraints</h4>
-                    <ul class="howto-list">
-                        <li><strong>Hard constraints are strict:</strong> Temperature equipment, certifications, capacity, shift windows, and deadline feasibility are binary pass/fail. No "soft" constraint relaxation (e.g., "deliver 10 minutes late if it saves 30 km").</li>
-                        <li><strong>Temperature compatibility is simplified:</strong> Items that "must not freeze" cannot ride with frozen/cryo items. In practice, multi-compartment vehicles or insulated packaging could allow co-transport.</li>
-                        <li><strong>No driver breaks or refueling:</strong> Drivers are available continuously within their shift window.</li>
-                    </ul>
+                    <h4>Solver &amp; Algorithms</h4>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Assumption</th><th>Implication</th><th>Production Upgrade</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Hungarian algorithm (bipartite matching)</td><td>Optimal for 1:1 assignment; doesn't jointly optimize routing</td><td>Google OR-Tools VRP solver for joint assignment + routing</td></tr>
+                            <tr><td>2-opt route improvement</td><td>Local search, not guaranteed global optimum for TSP</td><td>LKH-3 or branch-and-bound for exact TSP solutions</td></tr>
+                            <tr><td>Haversine &times; 1.4 distance</td><td>~15% accuracy vs. actual road network</td><td>OSRM / Google Directions API for real routing</td></tr>
+                            <tr><td>No live traffic</td><td>Constant base speed, stochastic variability only</td><td>Real-time traffic API (Google, HERE, TomTom)</td></tr>
+                            <tr><td>Hard constraints only</td><td>Binary pass/fail, no soft relaxation</td><td>Weighted soft constraints ("deliver 10 min late if it saves 30 km")</td></tr>
+                        </tbody>
+                    </table>
 
-                    <h4>What This Prototype Does NOT Include</h4>
-                    <ul class="howto-list">
-                        <li>Real-time GPS tracking or live driver position updates</li>
-                        <li>Historical demand prediction or machine learning</li>
-                        <li>Driver mobile app or turn-by-turn navigation</li>
-                        <li>Multi-period planning (this solves one dispatch window at a time)</li>
-                        <li>Vehicle return-to-depot or end-of-shift routing</li>
-                        <li>Google OR-Tools or commercial VRP solver (uses scipy Hungarian + custom heuristics)</li>
-                    </ul>
+                    <h4>Operational Simplifications</h4>
+                    <table class="howto-table">
+                        <thead>
+                            <tr><th>Assumption</th><th>Implication</th><th>Production Upgrade</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>No driver breaks or refueling</td><td>Continuous availability within shift</td><td>Break scheduling, fuel/charge constraints</td></tr>
+                            <tr><td>Simplified temperature compatibility</td><td>"Must not freeze" items can't ride with frozen items</td><td>Multi-compartment vehicle modeling</td></tr>
+                            <tr><td>No real-time tracking</td><td>Driver positions are simulated, not GPS</td><td>Live GPS integration, ETA updates</td></tr>
+                            <tr><td>No historical learning</td><td>Distributions are configured, not learned</td><td>ML demand prediction, seasonal patterns</td></tr>
+                            <tr><td>Single dispatch window</td><td>Solves one batch at a time</td><td>Rolling horizon, multi-period planning</td></tr>
+                            <tr><td>No driver mobile app</td><td>Dashboard only, no turn-by-turn for drivers</td><td>Driver app with optimized stop sequence</td></tr>
+                        </tbody>
+                    </table>
                 </div>
 
                 <div class="howto-section">
-                    <h3>10. The Roadmap</h3>
-                    <ul class="howto-list">
-                        <li><strong>Google OR-Tools VRP solver:</strong> Joint optimization of assignment + routing + pooling</li>
-                        <li><strong>Real-time GPS integration:</strong> Use actual driver positions, not simulated</li>
-                        <li><strong>Predictive demand modeling:</strong> Learn demand patterns by time of day &mdash; pre-position drivers</li>
-                        <li><strong>Tracking and chain of custody:</strong> Scan at pickup, scan at delivery &mdash; full audit trail</li>
-                        <li><strong>Driver mobile app:</strong> Turn-by-turn navigation with optimized stop sequence</li>
-                    </ul>
+                    <h3>11. Roadmap</h3>
+                    <p>Key production upgrades, roughly in order of impact:</p>
+                    <ol class="howto-list">
+                        <li><strong>Real routing API (OSRM / Google Directions):</strong> Replace Haversine approximation with actual road network distances, turn penalties, and one-way street routing</li>
+                        <li><strong>Google OR-Tools VRP solver:</strong> Joint optimization of assignment + routing + pooling in a single model, replacing the current two-stage approach</li>
+                        <li><strong>Real-time GPS integration:</strong> Live driver positions instead of simulated, with dynamic re-optimization as conditions change</li>
+                        <li><strong>Live traffic data:</strong> Time-of-day speed profiles and real-time congestion from traffic APIs</li>
+                        <li><strong>Predictive demand modeling:</strong> Learn arrival patterns from historical data &mdash; pre-position drivers for anticipated demand</li>
+                        <li><strong>Soft constraint relaxation:</strong> Allow controlled deadline flexibility when it produces significantly better global outcomes</li>
+                        <li><strong>Tracking and audit trail:</strong> Scan-based verification at pickup and delivery for full chain of custody</li>
+                        <li><strong>Driver mobile app:</strong> Turn-by-turn navigation with optimized stop sequence, real-time notifications</li>
+                    </ol>
                 </div>
             </div>
         </div>

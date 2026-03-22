@@ -192,7 +192,7 @@ function plotOrders(orders) {
                             o.urgency === 'routine' ? '#4c9aff' : '#6b778c'};
                 color: ${o.urgency === 'urgent' ? '#1a1d27' : 'white'};
             ">${o.urgency}</span>
-            ${o.chain_of_custody ? '| Chain of Custody' : ''}<br>
+            ${o.tracking_required ? '| Tracking Required' : ''}<br>
             <strong>${o.num_packages} package(s):</strong><br>
             <span style="font-size: 11px;">${pkgList}</span><br>
             Deadline: ${new Date(o.tightest_deadline).toLocaleTimeString()}

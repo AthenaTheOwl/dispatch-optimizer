@@ -52,3 +52,9 @@ ALL_FACILITIES = HUBS + BRANCHES + DESTINATIONS + SATELLITES
 # Pickup sources: hubs, branches, satellites (destinations receive, they don't send)
 PICKUP_LOCATIONS = HUBS + BRANCHES + SATELLITES
 DELIVERY_LOCATIONS = DESTINATIONS
+
+# Compatibility aliases for the medical-courier repo's experiment helpers.
+HOSPITALS = HUBS
+CLINICS = BRANCHES
+LABS = DESTINATIONS
+NURSING_HOMES = SATELLITES

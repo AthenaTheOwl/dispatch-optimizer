@@ -1,6 +1,10 @@
-"""API endpoints for the DispatchIQ dispatch system."""
+"""API endpoints for the dispatch system.
 
-from datetime import datetime, timedelta
+Uses the pluggable solver framework and event-driven simulation.
+No legacy algorithm imports — everything goes through app/solvers/*.
+"""
+
+from datetime import datetime
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -8,15 +12,19 @@ from app.models import Scenario
 from app.simulation.city import ALL_FACILITIES
 from app.simulation.orders import generate_orders, generate_field_collection_orders
 from app.simulation.drivers import generate_drivers
-from app.algorithms.greedy import greedy_dispatch
-from app.algorithms.hungarian import hungarian_dispatch
-from app.comparison import compare_algorithms, compute_metrics
+from app.simulation.engine import run_simulation, SimulationResult
+from app.solvers.base import SolverRegistry
+from app.solvers.constraints import DefaultConstraintChecker
 from app.analysis import generate_analysis
+from experiments.metrics import compute_experiment_metrics
 
 router = APIRouter()
 
 # In-memory scenario storage (single session, no DB needed)
 _current_scenario: Scenario | None = None
+
+# Shared constraint checker
+_constraint_checker = DefaultConstraintChecker()
 
 
 class ScenarioConfig(BaseModel):
@@ -90,12 +98,13 @@ def _scenario_to_dict(scenario: Scenario) -> dict:
     }
 
 
-def _dispatch_result_to_dict(result, orders, drivers) -> dict:
-    """Convert dispatch result + metrics to JSON-serializable dict."""
-    metrics = compute_metrics(result, orders, drivers)
+def _sim_result_to_dict(sim_result: SimulationResult, scenario: Scenario) -> dict:
+    """Convert simulation result + metrics to JSON-serializable dict."""
+    dispatch_result = sim_result.to_dispatch_result()
+    metrics = compute_experiment_metrics(dispatch_result, scenario)
 
     return {
-        "algorithm_name": result.algorithm_name,
+        "algorithm_name": sim_result.algorithm_name,
         "assignments": [
             {
                 "driver_id": a.driver_id,
@@ -106,6 +115,16 @@ def _dispatch_result_to_dict(result, orders, drivers) -> dict:
                 "cost_score": round(a.cost_score, 2),
                 "cost_breakdown": {k: round(v, 2) if isinstance(v, float) else v
                                    for k, v in a.cost_breakdown.items()},
+                "dispatched_at": a.dispatched_at.isoformat() if a.dispatched_at else None,
+                "execution_feasible": a.execution_feasible,
+                "package_deliveries": [
+                    {
+                        "package_id": pd.package_id,
+                        "on_time": pd.on_time,
+                        "slack_min": round(pd.slack_min, 1) if pd.slack_min is not None else None,
+                    }
+                    for pd in a.package_deliveries
+                ],
                 "route": {
                     "stops": [
                         {
@@ -123,15 +142,21 @@ def _dispatch_result_to_dict(result, orders, drivers) -> dict:
                     "num_stops": a.route.num_stops,
                 },
             }
-            for a in result.assignments
+            for a in sim_result.assignments
         ],
-        "unassigned_orders": result.unassigned_orders,
-        "metrics": {k: round(v, 2) if isinstance(v, float) else v for k, v in metrics.items()},
+        "unassigned_orders": sim_result.unassigned_orders,
+        "metrics": {k: round(v, 2) if isinstance(v, (int, float)) else v
+                    for k, v in metrics.to_dict().items()},
+        "simulation": {
+            "dispatch_epochs": sim_result.dispatch_epochs,
+            "total_events": len(sim_result.events),
+            "validation_rejections": sim_result.validation_rejections,
+        },
     }
 
 
 @router.post("/api/scenario/generate")
-def generate_scenario(config: ScenarioConfig):
+def generate_scenario_endpoint(config: ScenarioConfig):
     """Generate a new simulation scenario."""
     global _current_scenario
 
@@ -158,59 +183,63 @@ def generate_scenario(config: ScenarioConfig):
 
 @router.post("/api/dispatch/greedy")
 def run_greedy():
-    """Run greedy nearest-driver algorithm on current scenario."""
+    """Run greedy dispatch via event-driven simulation."""
     if _current_scenario is None:
         return {"error": "No scenario generated. Call /api/scenario/generate first."}
 
-    result = greedy_dispatch(
-        _current_scenario.drivers,
-        _current_scenario.orders,
-        _current_scenario.current_time,
+    solver = SolverRegistry.get_solver(
+        "greedy", "greedy_scorer", _constraint_checker, "none",
     )
-
-    return _dispatch_result_to_dict(result, _current_scenario.orders, _current_scenario.drivers)
+    sim_result = run_simulation(solver, _current_scenario)
+    return _sim_result_to_dict(sim_result, _current_scenario)
 
 
 @router.post("/api/dispatch/hungarian")
 def run_hungarian():
-    """Run Hungarian optimal assignment on current scenario."""
+    """Run Hungarian batch dispatch via event-driven simulation."""
     if _current_scenario is None:
         return {"error": "No scenario generated. Call /api/scenario/generate first."}
 
-    result = hungarian_dispatch(
-        _current_scenario.drivers,
-        _current_scenario.orders,
-        _current_scenario.current_time,
+    solver = SolverRegistry.get_solver(
+        "hungarian", "composite", _constraint_checker, "nn_2opt",
     )
-
-    return _dispatch_result_to_dict(result, _current_scenario.orders, _current_scenario.drivers)
+    sim_result = run_simulation(solver, _current_scenario)
+    return _sim_result_to_dict(sim_result, _current_scenario)
 
 
 @router.post("/api/dispatch/compare")
 def run_comparison():
-    """Run both algorithms and return side-by-side comparison."""
+    """Run both algorithms via event-driven simulation and compare."""
     if _current_scenario is None:
         return {"error": "No scenario generated. Call /api/scenario/generate first."}
 
-    comparison = compare_algorithms(_current_scenario)
+    greedy_solver = SolverRegistry.get_solver(
+        "greedy", "greedy_scorer", _constraint_checker, "none",
+    )
+    hungarian_solver = SolverRegistry.get_solver(
+        "hungarian", "composite", _constraint_checker, "nn_2opt",
+    )
 
-    greedy_dict = _dispatch_result_to_dict(
-        comparison["greedy"]["result"],
-        _current_scenario.orders,
-        _current_scenario.drivers,
-    )
-    hungarian_dict = _dispatch_result_to_dict(
-        comparison["hungarian"]["result"],
-        _current_scenario.orders,
-        _current_scenario.drivers,
-    )
+    g_sim = run_simulation(greedy_solver, _current_scenario)
+    h_sim = run_simulation(hungarian_solver, _current_scenario)
+
+    g_dict = _sim_result_to_dict(g_sim, _current_scenario)
+    h_dict = _sim_result_to_dict(h_sim, _current_scenario)
+
+    # Compute deltas
+    g_metrics = g_dict["metrics"]
+    h_metrics = h_dict["metrics"]
+    deltas = {}
+    for key in g_metrics:
+        g_val = g_metrics.get(key, 0)
+        h_val = h_metrics.get(key, 0)
+        if isinstance(g_val, (int, float)) and isinstance(h_val, (int, float)) and g_val != 0:
+            deltas[key] = round(((h_val - g_val) / abs(g_val)) * 100, 1)
 
     return {
-        "greedy": greedy_dict,
-        "hungarian": hungarian_dict,
-        "deltas": {k: round(v, 1) if isinstance(v, float) else v
-                   for k, v in comparison["deltas"].items()},
-        "pooling": comparison["pooling"],
+        "greedy": g_dict,
+        "hungarian": h_dict,
+        "deltas": deltas,
     }
 
 
@@ -221,7 +250,7 @@ def get_presets():
         "presets": [
             {
                 "name": "Peak Load",
-                "description": "Heavy demand: 15 drivers, 30 orders",
+                "description": "Heavy morning load: 15 drivers, 30 orders",
                 "config": {"num_drivers": 15, "num_orders": 30, "seed": 42},
             },
             {
@@ -248,7 +277,7 @@ def get_presets():
 
 @router.post("/api/dispatch/analysis")
 def run_analysis():
-    """Generate detailed analysis of why greedy is worse than optimal."""
+    """Generate detailed analysis of why greedy differs from Hungarian batch assignment."""
     if _current_scenario is None:
         return {"error": "No scenario generated. Call /api/scenario/generate first."}
 

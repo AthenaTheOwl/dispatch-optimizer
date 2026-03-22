@@ -122,7 +122,7 @@ def generate_order(
         for i in range(num_packages)
     ]
 
-    chain_of_custody = random.random() < 0.2
+    tracking_required = random.random() < 0.2
 
     return Order(
         id=order_id,
@@ -131,7 +131,7 @@ def generate_order(
         packages=packages,
         urgency=urgency,
         created_at=created_at,
-        chain_of_custody=chain_of_custody,
+        tracking_required=tracking_required,
     )
 
 
@@ -160,15 +160,25 @@ def generate_orders(
         (540, 660, 0.10),   # 4pm-6pm: 10%
     ]
 
+    # Allocate orders to waves, ensuring exact count
+    wave_counts = []
+    remaining = count
+    for i, (_, _, weight) in enumerate(wave_weights):
+        if i == len(wave_weights) - 1:
+            n = remaining
+        else:
+            n = round(count * weight)
+            n = min(n, remaining)
+        wave_counts.append(n)
+        remaining -= n
+
     arrival_offsets: list[float] = []
-    for start_min, end_min, weight in wave_weights:
-        n = max(1, int(count * weight))
+    for (start_min, end_min, _), n in zip(wave_weights, wave_counts):
         for _ in range(n):
             offset = random.uniform(start_min, end_min)
             arrival_offsets.append(offset)
 
-    # Trim to exact count and sort
-    arrival_offsets = sorted(arrival_offsets[:count])
+    arrival_offsets.sort()
 
     orders = []
     for i, offset in enumerate(arrival_offsets):
@@ -218,3 +228,18 @@ def generate_field_collection_orders(
         orders.append(order)
 
     return orders
+
+
+def generate_home_healthcare_orders(
+    count: int,
+    base_time: datetime,
+    nurse_location: Location | None = None,
+    seed: int | None = None,
+) -> list[Order]:
+    """Compatibility alias for the medical-courier repo."""
+    return generate_field_collection_orders(
+        count=count,
+        base_time=base_time,
+        agent_location=nurse_location,
+        seed=seed,
+    )

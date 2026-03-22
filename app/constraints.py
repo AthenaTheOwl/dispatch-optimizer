@@ -1,11 +1,18 @@
-"""Hard constraint checking for driver-order assignment feasibility."""
+"""Hard constraint checking for driver-order assignment feasibility.
+
+Uses the route evaluator as the single source of truth for route timing
+and deadline feasibility. No duplicate route-time logic here.
+"""
 
 from datetime import datetime
+
 from app.models import (
-    Driver, Order, Package, TempRegime, DriverStatus,
+    Driver, Order, Package, RouteStop, TempRegime, DriverStatus,
     COLD_STORAGE_CAPABILITIES,
 )
-from app.simulation.distance import pessimistic_travel_time, PICKUP_BUFFER_MINUTES, DELIVERY_BUFFER_MINUTES
+from app.simulation.route_evaluator import (
+    evaluate_route, build_stops, RouteEvaluation, TravelTimeMode,
+)
 
 
 def can_handle_temp(driver: Driver, order: Order) -> bool:
@@ -21,7 +28,7 @@ def can_handle_temp_package(driver: Driver, package: Package) -> bool:
 
 def has_required_certs(driver: Driver, order: Order) -> bool:
     """Check if driver has certifications required by the order."""
-    if order.needs_hazmat_cert and not driver.has_hazmat_cert:
+    if order.needs_dangerous_goods_cert and not driver.has_dangerous_goods_cert:
         return False
     return True
 
@@ -36,55 +43,11 @@ def is_available(driver: Driver) -> bool:
     return driver.status in (DriverStatus.AVAILABLE, DriverStatus.EN_ROUTE)
 
 
-def can_meet_shift(driver: Driver, order: Order, current_time: datetime) -> bool:
-    """Check if driver can complete the delivery before shift end."""
-    # Estimate total time: travel to pickup + buffer + travel to furthest delivery + buffer
-    pickup_travel = pessimistic_travel_time(
-        driver.current_location, order.pickup_location, driver.speed_kmh
-    )
-
-    # Find the furthest delivery destination
-    max_delivery_travel = 0.0
-    for dest in order.unique_destinations:
-        t = pessimistic_travel_time(order.pickup_location, dest, driver.speed_kmh)
-        max_delivery_travel = max(max_delivery_travel, t)
-
-    total_minutes = (
-        pickup_travel
-        + PICKUP_BUFFER_MINUTES
-        + max_delivery_travel * len(order.unique_destinations)  # Rough multi-stop estimate
-        + DELIVERY_BUFFER_MINUTES * len(order.unique_destinations)
-    )
-
-    estimated_end = current_time + __import__("datetime").timedelta(minutes=total_minutes)
-    return estimated_end <= driver.shift_end
-
-
-def can_meet_deadline(driver: Driver, order: Order, current_time: datetime) -> bool:
-    """Check if driver can deliver all packages before their deadlines (pessimistic estimate)."""
-    pickup_travel = pessimistic_travel_time(
-        driver.current_location, order.pickup_location, driver.speed_kmh
-    )
-
-    for package in order.packages:
-        delivery_travel = pessimistic_travel_time(
-            order.pickup_location, package.destination, driver.speed_kmh
-        )
-        total = pickup_travel + PICKUP_BUFFER_MINUTES + delivery_travel + DELIVERY_BUFFER_MINUTES
-        from datetime import timedelta
-        estimated_delivery = current_time + timedelta(minutes=total)
-        if estimated_delivery > package.deadline:
-            return False
-
-    return True
-
-
 def are_temps_compatible(packages: list[Package]) -> bool:
-    """
-    Check if packages can coexist in the same vehicle.
+    """Check if packages can coexist in the same vehicle.
 
-    Temperature-sensitive items can't ride with frozen items
-    in the same cold compartment.
+    Key incompatibility: "must_not_freeze" specimens (cultures) can't ride with
+    frozen/cryogenic specimens in the same cold compartment.
     """
     has_must_not_freeze = any("must_not_freeze" in p.special_handling for p in packages)
     has_frozen = any(p.temp_regime in (TempRegime.FROZEN, TempRegime.CRYOGENIC) for p in packages)
@@ -95,14 +58,40 @@ def are_temps_compatible(packages: list[Package]) -> bool:
     return True
 
 
+def evaluate_assignment(
+    driver: Driver,
+    order: Order,
+    stops: list[RouteStop],
+    current_time: datetime,
+    mode: TravelTimeMode = TravelTimeMode.CONSERVATIVE,
+) -> RouteEvaluation:
+    """Evaluate a candidate assignment using the route evaluator.
+
+    This is the bridge between constraint checking and route evaluation.
+    The caller provides the exact stop sequence the solver intends to execute.
+    """
+    return evaluate_route(driver, order, stops, current_time, mode)
+
+
 def check_all_constraints(
     driver: Driver,
     order: Order,
     current_time: datetime,
+    stops: list[RouteStop] | None = None,
+    mode: TravelTimeMode = TravelTimeMode.CONSERVATIVE,
 ) -> tuple[bool, list[str]]:
-    """
-    Run all hard constraint checks. Returns (feasible, list_of_violations).
-    Empty violations list means the assignment is feasible.
+    """Run all hard constraint checks. Returns (feasible, list_of_violations).
+
+    Args:
+        driver: Candidate driver.
+        order: Order to assign.
+        current_time: Dispatch time.
+        stops: Optional explicit stop sequence. If None, uses raw destination
+               order (pessimistic default for feasibility screening).
+        mode: Travel time mode for route evaluation.
+
+    Returns:
+        (feasible, violations) — empty violations means feasible.
     """
     violations: list[str] = []
 
@@ -117,17 +106,31 @@ def check_all_constraints(
         )
 
     if not has_required_certs(driver, order):
-        violations.append(f"Driver lacks hazmat certification")
+        violations.append("Driver lacks dangerous goods certification")
 
     if not has_capacity(driver, order):
         violations.append(
             f"Capacity: needs {order.total_packages}, driver has {driver.remaining_capacity} remaining"
         )
 
-    if not can_meet_shift(driver, order, current_time):
+    # Early exit: if basic constraints fail, skip route evaluation
+    if violations:
+        return (False, violations)
+
+    # Route-based constraints use the evaluator
+    if stops is None:
+        stops = build_stops(order)
+
+    evaluation = evaluate_route(driver, order, stops, current_time, mode)
+
+    if not evaluation.shift_feasible:
         violations.append(f"Delivery would exceed shift end ({driver.shift_end})")
 
-    if not can_meet_deadline(driver, order, current_time):
-        violations.append(f"Cannot meet tightest deadline ({order.tightest_deadline})")
+    if not evaluation.all_deadlines_met:
+        missed = evaluation.missed_package_ids
+        violations.append(
+            f"Cannot meet deadlines for packages: {missed} "
+            f"(tightest: {order.tightest_deadline})"
+        )
 
     return (len(violations) == 0, violations)

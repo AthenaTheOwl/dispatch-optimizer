@@ -1,4 +1,4 @@
-/* Analysis tab: detailed logs of why greedy is worse than optimal */
+/* Analysis tab: detailed logs of why greedy differs from Hungarian batch assignment */
 
 async function runAnalysis() {
     if (!window._currentScenario) {
@@ -89,7 +89,7 @@ function renderRootCauses(causes) {
 
     el.innerHTML = `
         <div class="analysis-card">
-            <h3>Root Causes: Why Greedy Fails</h3>
+            <h3>Root Causes: Why Greedy Falls Behind</h3>
             <ul class="root-cause-list">
                 ${causes.map(c => `<li>${c}</li>`).join('')}
             </ul>
@@ -113,7 +113,7 @@ function renderAssignmentLogs(assignments) {
     sorted.forEach(a => {
         const urgencyClass = `urgency-${a.urgency}`;
         const pkgStr = a.packages.map(p =>
-            `${p.cargo} (${p.temp}) &rarr; ${p.destination}`
+            `${p.cargo_type} (${p.temp}) &rarr; ${p.destination}`
         ).join('<br>');
 
         html += `<div class="analysis-order">`;
@@ -132,7 +132,7 @@ function renderAssignmentLogs(assignments) {
         html += `<div class="comparison-row">
             <div class="label-col"></div>
             <div style="color: var(--accent-red); font-weight: 600; font-size: 11px;">GREEDY</div>
-            <div style="color: var(--accent-green); font-weight: 600; font-size: 11px;">OPTIMAL</div>
+            <div style="color: var(--accent-green); font-weight: 600; font-size: 11px;">HUNGARIAN</div>
         </div>`;
 
         if (a.greedy && a.optimal) {
@@ -200,8 +200,8 @@ function renderDriverLogs(drivers) {
                     <th>Cold Storage</th>
                     <th>Greedy Orders</th>
                     <th>Greedy Distance</th>
-                    <th>Optimal Orders</th>
-                    <th>Optimal Distance</th>
+                    <th>Hungarian Orders</th>
+                    <th>Hungarian Distance</th>
                     <th>Notes</th>
                 </tr>
             </thead>

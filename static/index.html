@@ -84,7 +84,7 @@
                             Greedy
                         </button>
                         <button class="btn btn-success" onclick="runHungarian()" id="btn-hungarian" disabled>
-                            Optimal
+                            Hungarian
                         </button>
                     </div>
                     <button class="btn btn-primary" onclick="runComparison()" id="btn-compare" disabled
@@ -97,7 +97,7 @@
                             Greedy Routes
                         </div>
                         <div class="toggle-option" data-mode="optimal" onclick="setRouteDisplay('optimal')">
-                            Optimal Routes
+                            Hungarian Routes
                         </div>
                         <div class="toggle-option" data-mode="both" onclick="setRouteDisplay('both')">
                             Both
@@ -113,7 +113,7 @@
                             <tr>
                                 <th>Metric</th>
                                 <th class="col-greedy">Greedy</th>
-                                <th class="col-optimal">Optimal</th>
+                                <th class="col-optimal">Hungarian</th>
                                 <th class="col-delta">Delta</th>
                             </tr>
                         </thead>
@@ -139,8 +139,8 @@
         <div class="tab-content" id="tab-analysis">
             <div class="analysis-container">
                 <div class="analysis-header">
-                    <h2>Why Is Greedy Worse?</h2>
-                    <p>Order-by-order breakdown showing specific bad decisions made by the greedy dispatcher.</p>
+                    <h2>Why Does Greedy Lose Here?</h2>
+                    <p>Order-by-order breakdown comparing the sequential greedy heuristic against Hungarian batch assignment in the event-driven simulator.</p>
                     <button class="btn btn-primary" onclick="runAnalysis()" id="btn-analysis">
                         Run Analysis
                     </button>
@@ -165,21 +165,21 @@
             <div class="howto-container">
                 <div class="howto-section">
                     <h2>How DispatchIQ Works</h2>
-                    <p class="howto-subtitle">End-to-end walkthrough of the problem formulation, simulation design, technical stack, algorithms, and assumptions.</p>
+                    <p class="howto-subtitle">End-to-end walkthrough of the problem formulation, simulation design, technical stack, algorithms, and assumptions behind this static portfolio prototype.</p>
                 </div>
 
                 <div class="howto-section">
                     <h3>1. The Problem</h3>
-                    <p>Consider an organization that manages a fleet of drivers picking up and delivering items across a metro area. Orders arrive throughout the day with varying urgency levels, handling requirements, and deadlines. Each order originates at a pickup location and contains one or more packages, each potentially going to a <em>different</em> destination. A human dispatcher assigns drivers to orders one at a time, using their judgment to balance proximity, equipment fit, and urgency.</p>
+                    <p>Consider an organization that manages a fleet of drivers picking up and delivering items across a metro area. Orders arrive throughout the day with varying urgency levels, handling requirements, and deadlines. Each order originates at a pickup location and contains one or more packages, each potentially going to a <em>different</em> destination. The simulator dispatches in epochs as orders arrive rather than handing either solver the full day upfront.</p>
 
                     <p><strong>Why is this hard?</strong> This is a <strong>Vehicle Routing Problem with Pickup and Delivery (VRPPD)</strong> &mdash; NP-hard in the general case. The challenge has three layers:</p>
                     <ol class="howto-list">
                         <li><strong>Assignment</strong> (who gets what): Match N drivers to M orders while respecting hard constraints (equipment, certifications, capacity, shift windows, deadlines) and minimizing total cost</li>
-                        <li><strong>Pooling</strong> (can we batch?): Group compatible nearby orders for a single driver when detour cost is low, intentionally holding low-urgency orders to create batching opportunities</li>
+                        <li><strong>Pooling</strong> (can we batch?): Group compatible nearby orders for a single driver when detour cost is low. In this repo this is exploratory only, not part of active dispatch.</li>
                         <li><strong>Routing</strong> (in what order): Optimize each driver's multi-stop delivery sequence (per-driver TSP with precedence constraints: pickup before delivery)</li>
                     </ol>
-                    <p>A human dispatcher handles layer 1 reasonably well but can't simultaneously optimize across all three. Each individual decision looks good &mdash; send the nearest eligible driver &mdash; but the <em>sequence</em> of decisions is globally suboptimal. Assigning Driver A to Order X might be locally rational, but it leaves no feasible option for the higher-priority Order Y arriving 10 minutes later.</p>
-                    <p>This simulator demonstrates the gap: how much is lost by sequential human decision-making vs. batch-optimal algorithmic dispatch.</p>
+                    <p>A human dispatcher handles layer 1 reasonably well but can't simultaneously optimize across all three. Each individual decision looks good &mdash; send the nearest eligible driver &mdash; but the <em>sequence</em> of decisions is often globally suboptimal. Assigning Driver A to Order X might be locally rational, but it leaves no feasible option for the higher-priority Order Y in the same batch.</p>
+                    <p>This simulator demonstrates that gap in a simplified but non-clairvoyant model: how much is lost by sequential human decision-making vs. Hungarian batch assignment under shared constraints.</p>
                 </div>
 
                 <div class="howto-section">
@@ -331,16 +331,16 @@
                     <p><strong>Where it still falls short</strong> (inherent limitations of sequential decision-making):</p>
                     <ul class="howto-list">
                         <li><strong>No global view:</strong> Each assignment is locally rational but globally suboptimal. Assigning Driver A here might leave no feasible option for Order Y arriving 10 minutes later. A human can't hold all N&times;M possibilities in their head.</li>
-                        <li><strong>Equipment preference, not optimization:</strong> The dispatcher <em>tries</em> to match equipment levels, but under time pressure still makes suboptimal matches. The Hungarian algorithm guarantees globally optimal equipment allocation across all orders simultaneously.</li>
-                        <li><strong>No delivery route optimization:</strong> When an order has 3 packages going to 3 different destinations, the dispatcher sends the driver in the order the destinations appear. The optimal algorithm uses nearest-neighbor + 2-opt to find the shortest delivery sequence.</li>
+                        <li><strong>Equipment preference, not optimization:</strong> The dispatcher <em>tries</em> to match equipment levels, but under time pressure still makes suboptimal matches. The Hungarian solver finds the lowest-cost 1:1 assignment under the modeled cost matrix for each dispatch epoch.</li>
+                        <li><strong>No delivery route optimization:</strong> When an order has 3 packages going to 3 different destinations, the dispatcher sends the driver in the order the destinations appear. The Hungarian path uses nearest-neighbor + 2-opt to find a shorter delivery sequence.</li>
                         <li><strong>No pooling:</strong> Every order gets its own dedicated driver. Two facilities 500m apart each get separate drivers, even though one trip could serve both.</li>
                         <li><strong>Deadline slack isn't weighed against future demand:</strong> The dispatcher doesn't think "this Routine order has 3 hours of slack, so I should save this nearby driver for the STAT that's likely coming in 20 minutes."</li>
                     </ul>
                 </div>
 
                 <div class="howto-section">
-                    <h3>7. Algorithm 2: Hungarian Optimal Assignment</h3>
-                    <p>Uses <strong>scipy.optimize.linear_sum_assignment</strong> (the Hungarian/Kuhn-Munkres algorithm) to find the globally optimal driver-to-order matching:</p>
+                    <h3>7. Algorithm 2: Hungarian Batch Assignment</h3>
+                    <p>Uses <strong>scipy.optimize.linear_sum_assignment</strong> (the Hungarian/Kuhn-Munkres algorithm) to find the minimum-cost driver-to-order matching for this simplified 1:1 assignment model:</p>
 
                     <h4>Step 1: Build Cost Matrix (N<sub>drivers</sub> &times; M<sub>orders</sub>)</h4>
                     <p>Each cell C[i][j] represents the total cost of assigning driver i to order j. The cost function is a weighted combination:</p>
@@ -359,7 +359,7 @@
                     </table>
 
                     <h4>Step 2: Solve</h4>
-                    <p>The Hungarian algorithm finds the assignment that minimizes total cost across ALL driver-order pairs simultaneously. It runs in O(n&sup3;) time and guarantees the global optimum for the linear assignment problem. The matrix is padded to square if N &ne; M.</p>
+                    <p>The Hungarian algorithm finds the assignment that minimizes total cost across all driver-order pairs simultaneously. It runs in O(n&sup3;) time and guarantees the global optimum for the linear assignment problem defined by the cost matrix. The matrix is padded to square if N &ne; M.</p>
 
                     <h4>Step 3: Optimize Delivery Routes</h4>
                     <p>For each assigned driver with multi-destination deliveries:</p>
@@ -370,8 +370,9 @@
                 </div>
 
                 <div class="howto-section">
-                    <h3>8. Pooling &amp; Insertion</h3>
-                    <p><strong>Order Pooling:</strong> Groups nearby compatible orders into batches before assignment. A driver picking up from Facility A can also service Facility B (0.5 km away) on the same trip.</p>
+                    <h3>8. Exploratory Pooling &amp; Insertion Modules</h3>
+                    <p>This repo includes standalone pooling and insertion helpers for exploration, but they are <strong>not wired into the active dispatch path</strong>. The live demo still assigns at most one order per driver per dispatch epoch.</p>
+                    <p><strong>Order Pooling:</strong> The helper groups nearby compatible orders into batches before assignment. A driver picking up from Facility A can also service Facility B (0.5 km away) on the same trip.</p>
                     <h4>Pooling Criteria</h4>
                     <ul class="howto-list">
                         <li>Pickup locations within 2 km of each other</li>
@@ -392,10 +393,10 @@
                             <tr><td>Standard</td><td>60 minutes</td><td>Maximum pooling opportunity</td></tr>
                         </tbody>
                     </table>
-                    <p>This is analogous to how ride-sharing platforms briefly hold delivery orders waiting for a second nearby pickup to batch on the same trip.</p>
+                    <p>That holding logic is conceptual here; the current API does not delay dispatch to wait for a pooling match.</p>
 
                     <h4>Cheapest Insertion</h4>
-                    <p>When a new order arrives while drivers are mid-route, the system evaluates inserting it into an existing route vs. dispatching a new driver:</p>
+                    <p>In a future, richer event-driven system, a new order could be evaluated for insertion into an existing route vs. dispatching a new driver:</p>
                     <ol class="howto-list">
                         <li>For each active driver route, find the position that adds minimum extra distance for the new pickup + delivery stops</li>
                         <li>Verify that insertion doesn't cause any existing order on that route to miss its deadline (cascade check)</li>
@@ -447,9 +448,9 @@
                             <tr><th>Assumption</th><th>Implication</th><th>Production Upgrade</th></tr>
                         </thead>
                         <tbody>
-                            <tr><td>Static batch scenario</td><td>All orders and drivers known at generation time</td><td>Dynamic arrival with real-time insertion algorithm</td></tr>
+                            <tr><td>Epoch-based event simulation</td><td>Orders arrive over time, but insertion and pooling are not yet active</td><td>Dynamic insertion, holding, and rolling-horizon planning</td></tr>
                             <tr><td>No central depot</td><td>Drivers start at scattered positions, no return-to-base cost</td><td>Depot modeling with end-of-shift return routing</td></tr>
-                            <tr><td>One order per driver</td><td>Both algorithms assign at most one order per driver for fair comparison</td><td>Pooling module enables multi-order routes</td></tr>
+                            <tr><td>One order per driver</td><td>Both algorithms assign at most one order per driver in the active demo</td><td>Pooling module enables multi-order routes</td></tr>
                             <tr><td>Generated data</td><td>Probability distributions, not historical operational data</td><td>Learn distributions from real data; demand forecasting</td></tr>
                             <tr><td>Fixed facility locations</td><td>29 facilities at real NYC coordinates</td><td>Dynamic facility onboarding, coverage optimization</td></tr>
                         </tbody>

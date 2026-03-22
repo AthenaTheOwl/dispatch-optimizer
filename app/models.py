@@ -174,6 +174,16 @@ class Package(BaseModel):
     deadline: datetime                   # Absolute deadline for this package
     special_handling: list[str] = Field(default_factory=list)  # "fragile", "light_sensitive", etc.
 
+    @property
+    def specimen_type(self) -> CargoType:
+        """Compatibility alias for the medical-courier repo."""
+        return self.cargo_type
+
+    @property
+    def biohazard_class(self) -> HazardClass:
+        """Compatibility alias for the medical-courier repo."""
+        return self.hazard_class
+
 
 class Order(BaseModel):
     """A pickup event at one location, containing 1+ packages going to potentially different destinations."""
@@ -221,6 +231,16 @@ class Order(BaseModel):
     def slack_minutes(self) -> int:
         return URGENCY_SLACK_MINUTES[self.urgency]
 
+    @property
+    def needs_dangerous_goods_cert(self) -> bool:
+        """Compatibility alias for the medical-courier repo."""
+        return self.needs_hazmat_cert
+
+    @property
+    def chain_of_custody(self) -> bool:
+        """Compatibility alias for older portfolio/frontend code."""
+        return self.tracking_required
+
 
 class Driver(BaseModel):
     """A driver with vehicle, equipment, and certifications."""
@@ -254,6 +274,11 @@ class Driver(BaseModel):
     @property
     def has_hazmat_cert(self) -> bool:
         return Certification.HAZMAT in self.certifications
+
+    @property
+    def has_dangerous_goods_cert(self) -> bool:
+        """Compatibility alias for the medical-courier repo."""
+        return self.has_hazmat_cert
 
 
 class RouteStop(BaseModel):
@@ -292,6 +317,18 @@ class Assignment(BaseModel):
     total_distance_km: float
     cost_score: float               # Composite optimization score (lower = better)
     cost_breakdown: dict[str, float] = Field(default_factory=dict)  # For "why this driver?" detail
+    dispatched_at: Optional[datetime] = None  # When the assignment was made (event-driven sim)
+    package_deliveries: list["PackageDeliveryInfo"] = Field(default_factory=list)
+    execution_feasible: Optional[bool] = None
+
+
+class PackageDeliveryInfo(BaseModel):
+    """Delivery timing for a single package within an assignment."""
+    package_id: str
+    delivery_time: Optional[datetime] = None
+    deadline: Optional[datetime] = None
+    on_time: Optional[bool] = None
+    slack_min: Optional[float] = None
 
 
 class DispatchResult(BaseModel):
@@ -302,6 +339,7 @@ class DispatchResult(BaseModel):
     total_distance_km: float = 0.0
     total_time_minutes: float = 0.0
     metrics: dict[str, float] = Field(default_factory=dict)
+    validation_rejections: int = 0
 
 
 class Scenario(BaseModel):

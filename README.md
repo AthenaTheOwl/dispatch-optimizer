@@ -1,83 +1,98 @@
-# DispatchIQ: Constrained Dispatch Optimizer
+<!-- ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ -->
 
-An interactive event-driven simulator for constrained logistics dispatch.
+# N° 01 · dispatchIQ
 
-This portfolio repo compares:
-- a sequential greedy dispatcher
-- a Hungarian batch assignment solver
+> *greedy vs. clever, with constraints that bite.*
 
-Both operate under the same information constraints: orders arrive over time, drivers become available over time, and route feasibility is checked against the actual stop sequence.
+an event-driven simulator for constrained logistics dispatch. orders show up in time. drivers come and go. routes have to actually work — not just on paper. two policies share the same world, the same information, the same rules; you watch one fall behind the other.
 
-## What It Is
+`python` · `fastapi` · `scipy.optimize` · `MIT` · 2024 · **status: running**
 
-DispatchIQ models a fleet of drivers with heterogeneous capabilities:
+```bash
+pip install -r requirements.txt
+python -m uvicorn app.main:app --reload  # http://localhost:8000
+```
+
+<!-- ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ -->
+
+## the two dispatchers
+
+| | **greedy** | **hungarian batch** |
+|---|---|---|
+| picks            | one order at a time | a whole epoch at once |
+| sees             | the next assignable pair | the full bipartite cost matrix |
+| solves           | nothing — just sorts | min-cost assignment |
+| scales gracefully | up to a point | yes |
+| fails honestly   | very | also yes, but later |
+
+both run on the same event clock, the same driver state, and the same route evaluator. neither one cheats.
+
+## the constraints that bite
+
+drivers are not interchangeable. they carry:
+
 - vehicle type
-- temperature equipment
+- temperature equipment (frozen / chilled / ambient)
 - certifications
 - shift windows
-- current load
+- whatever's already in the truck
 
-Each order contains one or more packages, and each package can have:
-- its own destination
-- its own handling requirements
-- its own deadline
+orders are not single drops. each order is one or more packages, and each package can have its own destination, handling rules, and deadline. that's pickup-and-delivery, with assignment and routing and deadline risk all wired together. the route evaluator is the referee.
 
-That creates a constrained pickup-and-delivery problem with assignment, routing, and deadline risk all interacting.
+## what the repo is honest about
 
-## What It Does
+what's wired into live dispatch:
+- greedy sequential assignment
+- hungarian batch assignment per epoch
+- shared route evaluator (used for planning, execution, and metrics)
+- package-level deadline compliance from evaluated routes
+- analysis views explaining where greedy falls behind
 
-- Generates realistic NYC scenarios with timed order arrivals
-- Runs a greedy baseline that assigns sequentially
-- Runs a Hungarian batch solver each dispatch epoch
-- Uses a shared route evaluator for planning, execution, and metrics
-- Produces package-level deadline compliance from evaluated routes
-- Includes analysis views explaining where the greedy policy falls behind
-
-## What It Does Not Do
-
-These modules or ideas exist, but are not wired into active dispatch:
+what exists but is **not** in the live path (intentionally):
 - pooling
 - slack-based holding
 - cheapest insertion into active routes
 
-This is still a simplified simulator. It does not include:
-- live GPS
-- real road-network routing APIs
+what isn't here at all:
+- live GPS or real road-network APIs
 - OR-Tools or a full VRP solver
 - learned travel times or demand models
-- production persistence or mobile apps
+- production persistence, mobile apps
 
-## Integrity Notes
+## integrity
 
-The repo is intentionally non-clairvoyant:
+the repo is intentionally non-clairvoyant.
+
 - orders are dispatched only after `created_at`
-- driver state evolves through the simulation
-- constraints use the same route evaluator used by execution
+- driver state evolves through the simulation, not jumped to
+- constraints use the same route evaluator that execution uses
 - deadline metrics come from evaluated package delivery times, not static proxies
 
-## Architecture
+if a metric looks too good, the test suite breaks first.
 
-```text
+<!-- ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ -->
+
+## the floorplan
+
+```
 app/
   models.py
   constraints.py
   analysis.py
   api/routes.py
   simulation/
-    city.py
+    city.py             # NYC scenarios, timed arrivals
     distance.py
     drivers.py
     orders.py
-    route_evaluator.py
-    engine.py
+    route_evaluator.py  # the referee
+    engine.py           # the event clock
   solvers/
-    base.py
-    constraints.py
     greedy.py
     hungarian.py
     route_optimizers.py
     cost_functions/
-  algorithms/
+  algorithms/           # exploratory; not on the live path
     pooling.py
     insertion.py
     route_optimizer.py
@@ -87,36 +102,18 @@ tests/
 static/
 ```
 
-`algorithms/pooling.py` and `algorithms/insertion.py` are exploratory helpers, not part of the live dispatch path.
-
-## Quick Start
-
-```bash
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload
-```
-
-Open `http://localhost:8000`.
-
-## Verification
+## verification
 
 ```bash
 python -m pytest -q
 ```
 
-The current freeze state includes integrity tests for:
-- route evaluation
-- event-driven dispatch stamping
-- compare/analysis parity
-- event-driven experiments
-- multi-seed no-silent-miss sweeps
+the freeze-state tests cover route evaluation, event-driven dispatch stamping, compare/analysis parity, event-driven experiments, and multi-seed no-silent-miss sweeps.
 
-## Portfolio Positioning
+<!-- ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ -->
 
-This repo is a frozen portfolio piece. It is meant to demonstrate:
-- modeling depth
-- solver architecture
-- experiment discipline
-- honest handling of operational constraints
+## colophon
 
-It is not presented as a full production dispatch platform.
+a frozen portfolio piece. the point: modeling depth, solver architecture, experiment discipline, and honest handling of operational constraints. not a production dispatch platform. not pretending to be.
+
+`MIT` license. *built downstairs.* — [the basement, room 7](https://github.com/AthenaTheOwl)

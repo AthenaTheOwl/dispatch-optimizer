@@ -112,6 +112,31 @@ the freeze-state tests cover route evaluation, event-driven dispatch stamping, c
 
 <!-- ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ -->
 
+## live demo
+
+Deploy with Streamlit Cloud using:
+
+```text
+streamlit_app.py
+```
+
+Local run:
+
+```bash
+python -m pip install -r requirements.txt
+python -m streamlit run streamlit_app.py
+```
+
+The Streamlit page runs the same event-driven comparison as the test suite:
+greedy sequential assignment and Hungarian batch assignment over identical
+scenario seeds.
+
+## connects to
+
+- `world-food-program-robust-simulator` for network allocation before last-mile dispatch.
+- `Robust-Facility-Location` for facility placement before route execution.
+- `proof-gate-runner` for packaging the simulation checks into reusable CI gates.
+
 ## colophon
 
 a frozen portfolio piece. the point: modeling depth, solver architecture, experiment discipline, and honest handling of operational constraints. not a production dispatch platform. not pretending to be.

@@ -121,3 +121,7 @@ static/
 ## License
 
 MIT.
+
+## Method update
+
+[October method update: Compare dispatch policies on the same realized world](docs/paired-stress-experiments.md).

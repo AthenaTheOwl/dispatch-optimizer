@@ -62,6 +62,8 @@ The binding stage holds the largest share of waiting minutes. An order that time
 
 At the settings above, greedy dispatch starts with waiting split almost evenly: `travel_to_pickup` holds 51%, the queue 49%. With arrivals compressed, the queue holds 59% and 21 orders give up waiting instead of 13. Across seeds 1 to 10 at these settings, the binding stage moves from `travel_to_pickup` to `queue_for_assignment` on six seeds and never moves the other way. At 6 drivers and 40 orders, seed 7 holds at `travel_to_pickup`, because doubling the arrival rate does not grow that fleet's queue.
 
+[October method update: Compare dispatch policies on the same realized world](docs/paired-stress-experiments.md).
+
 ## Live demo
 
 Deploy with Streamlit Cloud using:
@@ -121,7 +123,3 @@ static/
 ## License
 
 MIT.
-
-## Method update
-
-[October method update: Compare dispatch policies on the same realized world](docs/paired-stress-experiments.md).

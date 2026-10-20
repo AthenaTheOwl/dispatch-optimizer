@@ -24,6 +24,8 @@ def run_small_comparison(seed: int, scenario_count: int) -> pd.DataFrame:
                 "solver": run.solver_config.solver_name,
                 "seed": run.scenario_seed,
                 "assignment_rate": run.metrics.assignment_rate,
+                "on_time_rate_all_orders": run.metrics.deadline_compliance_rate,
+                "on_time_rate_assigned_only": run.metrics.assigned_deadline_compliance_rate,
                 "package_deadline_rate": run.metrics.package_deadline_compliance_rate,
                 "distance_km": run.metrics.total_distance_km,
                 "drivers_used": run.metrics.drivers_used,
@@ -48,6 +50,8 @@ summary = (
     df.groupby("solver", as_index=False)
     .agg(
         assignment_rate=("assignment_rate", "mean"),
+        on_time_rate_all_orders=("on_time_rate_all_orders", "mean"),
+        on_time_rate_assigned_only=("on_time_rate_assigned_only", "mean"),
         package_deadline_rate=("package_deadline_rate", "mean"),
         distance_km=("distance_km", "mean"),
         drivers_used=("drivers_used", "mean"),
@@ -56,6 +60,12 @@ summary = (
 )
 
 st.subheader("Policy summary")
+st.caption(
+    "on_time_rate_all_orders and package_deadline_rate divide by every order or "
+    "package in the scenario; unassigned orders count as not on time. "
+    "on_time_rate_assigned_only divides by assigned orders and stays near 100% "
+    "because the engine only dispatches routes that meet every deadline."
+)
 st.dataframe(summary, width="stretch", hide_index=True)
 
 st.subheader("Run detail")

@@ -46,11 +46,19 @@ function renderAnalysisSummary(summary) {
                     <div class="value green">${summary.wait_time_saved_min} min/order</div>
                 </div>
                 <div class="summary-card">
-                    <div class="label">Deadline Rate</div>
+                    <div class="label">On Time (all orders)</div>
                     <div class="value">
                         <span class="red">${summary.greedy_deadline_pct}%</span>
                         <span style="color: var(--text-secondary); font-size: 14px;"> &rarr; </span>
                         <span class="green">${summary.optimal_deadline_pct}%</span>
+                    </div>
+                </div>
+                <div class="summary-card">
+                    <div class="label">On Time (assigned orders only)</div>
+                    <div class="value">
+                        <span>${summary.greedy_assigned_deadline_pct}%</span>
+                        <span style="color: var(--text-secondary); font-size: 14px;"> &rarr; </span>
+                        <span>${summary.optimal_assigned_deadline_pct}%</span>
                     </div>
                 </div>
                 <div class="summary-card">

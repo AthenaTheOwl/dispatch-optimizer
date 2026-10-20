@@ -16,7 +16,8 @@ function renderComparisonMetrics(data) {
         { label: 'Avg Distance/Order', key: 'avg_distance_per_order_km', unit: ' km', decimals: 2 },
         { label: 'Avg Pickup Wait', key: 'avg_pickup_wait_min', unit: ' min', decimals: 1 },
         { label: 'Max Pickup Wait', key: 'max_pickup_wait_min', unit: ' min', decimals: 1 },
-        { label: 'Deadline Compliance', key: 'deadline_compliance_rate', unit: '%', decimals: 0 },
+        { label: 'On Time (all orders)', key: 'deadline_compliance_rate', unit: '%', decimals: 0 },
+        { label: 'On Time (assigned only)', key: 'assigned_deadline_compliance_rate', unit: '%', decimals: 0 },
         { label: 'Drivers Used', key: 'drivers_used', unit: '', decimals: 0 },
         { label: 'Overqualified Assigns', key: 'overqualified_assignments', unit: '', decimals: 0 },
         { label: 'Cost per Package', key: 'cost_per_package_km', unit: ' km', decimals: 2 },
@@ -30,7 +31,7 @@ function renderComparisonMetrics(data) {
         const tr = document.createElement('tr');
 
         // Determine if lower or higher is better
-        const lowerIsBetter = !['deadline_compliance_rate', 'orders_assigned'].includes(row.key);
+        const lowerIsBetter = !['deadline_compliance_rate', 'assigned_deadline_compliance_rate', 'orders_assigned'].includes(row.key);
         const isImprovement = lowerIsBetter ? (delta < 0) : (delta > 0);
 
         tr.innerHTML = `
@@ -91,7 +92,7 @@ function renderKPIs(data) {
             lowerBetter: true,
         },
         {
-            label: 'Deadline Rate',
+            label: 'On Time (all orders)',
             value: `${formatNum(hm.deadline_compliance_rate, 0)}%`,
             delta: data.deltas.deadline_compliance_rate,
             lowerBetter: false,

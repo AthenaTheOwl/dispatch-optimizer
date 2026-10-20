@@ -14,12 +14,19 @@ ROOT = Path(__file__).parent.parent
 SCORECARD_PATH = ROOT / "reports" / "scorecard.jsonl"
 SCENARIOS_PER_COHORT = 3
 
+# deadline_compliance_rate is on-time orders over ALL orders in the cohort's
+# scenarios; unassigned orders count as not on time.
 METRICS = (
     "assignment_rate",
     "deadline_compliance_rate",
     "driver_utilization_pct",
     "total_distance_km",
 )
+
+# Reported beside METRICS but not scored for the winner: on-time orders over
+# assigned orders only. The engine only dispatches routes that meet every
+# deadline, so this sits near 100% however many orders go unserved.
+REPORTED_ONLY = ("assigned_deadline_compliance_rate",)
 
 HIGHER_IS_BETTER = {
     "assignment_rate": True,
@@ -80,13 +87,14 @@ def _cohort_rows(cohort: Cohort) -> tuple[list[dict[str, Any]], dict[str, int]]:
         save=False,
     )
 
+    reported = METRICS + REPORTED_ONLY
     means = {
-        solver: {metric: _mean_for(result, solver, metric) for metric in METRICS}
+        solver: {metric: _mean_for(result, solver, metric) for metric in reported}
         for solver in ("greedy", "hungarian")
     }
     deltas = {
         metric: round(means["hungarian"][metric] - means["greedy"][metric], 4)
-        for metric in METRICS
+        for metric in reported
     }
 
     rows: list[dict[str, Any]] = []
@@ -95,9 +103,9 @@ def _cohort_rows(cohort: Cohort) -> tuple[list[dict[str, Any]], dict[str, int]]:
             "cohort": cohort.name,
             "solver": solver,
         }
-        for metric in METRICS:
+        for metric in reported:
             row[f"mean_{metric}"] = means[solver][metric]
-        for metric in METRICS:
+        for metric in reported:
             row[f"delta_{metric}"] = deltas[metric]
         rows.append(row)
 

@@ -42,6 +42,19 @@ python -m pytest -q
 
 The tests cover route evaluation, event-driven dispatch stamping, comparison parity, experiment sweeps, and multi-seed no-silent-miss cases.
 
+## Scorecard
+
+`python -m app.report` writes `reports/scorecard.jsonl`: four cohorts, three seeded scenarios each, greedy against Hungarian. The on-time rate divides on-time orders by every order in the scenario, so an order that is never assigned counts as not on time.
+
+| Cohort | Drivers / orders | Greedy assigned | Greedy on time (all orders) | Hungarian assigned | Hungarian on time (all orders) |
+|---|---|---:|---:|---:|---:|
+| balanced | 12 / 20 | 63.3% | 63.3% | 63.3% | 63.3% |
+| understaffed | 6 / 20 | 46.7% | 46.7% | 48.3% | 48.3% |
+| high-volume | 12 / 40 | 56.7% | 56.7% | 59.2% | 59.2% |
+| overstaffed | 20 / 10 | 83.3% | 83.3% | 83.3% | 83.3% |
+
+The scorecard also keeps `mean_assigned_deadline_compliance_rate`, on-time orders over assigned orders only. It is 100.0 in every row because the engine only dispatches routes that meet every deadline, so it says nothing about the 17 to 53% of orders that are never served. An earlier scorecard published that assigned-only figure as `mean_deadline_compliance_rate` and showed 100.0 in every cohort. The on-time rate equals the assignment rate here for the same reason, so in this scorecard it scores the same thing twice when picking the overall winner (Hungarian, before and after the change).
+
 ## Constraint finder
 
 `experiments.constraint` splits every order's life into time spent waiting and time spent being worked, names the stage everything queues for, and shows what happens to that queue when orders arrive twice as fast.

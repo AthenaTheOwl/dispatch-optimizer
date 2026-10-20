@@ -141,6 +141,7 @@ def run_experiment(
     key_metrics = [
         "total_distance_km", "deadline_compliance_rate",
         "package_deadline_compliance_rate",
+        "assigned_deadline_compliance_rate",
         "avg_pickup_wait_min", "overqualification_rate",
         "drivers_used", "assignment_rate",
         "validation_rejections",

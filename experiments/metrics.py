@@ -3,6 +3,13 @@
 Deadline metrics come from evaluated execution results (package_deliveries
 on each Assignment), not from proxy calculations. This ensures metrics
 match what the route evaluator computes.
+
+The headline on-time rates divide by every order (and every package) in the
+scenario. An order that is never assigned is not delivered on time, so it
+counts against the rate. The engine only dispatches routes that meet every
+deadline, so a rate over assigned orders alone is close to 100% by
+construction; it is kept as ``assigned_deadline_compliance_rate`` and
+``assigned_package_deadline_compliance_rate``.
 """
 
 from __future__ import annotations
@@ -38,16 +45,24 @@ class ExperimentMetrics:
     assignment_rate: float = 0.0
 
     # Deadline compliance (order-level)
+    # on-time orders / ALL orders; unassigned orders count as not on time
     deadline_compliance_rate: float = 0.0
+    # on-time orders / assigned orders only (excludes unassigned orders)
+    assigned_deadline_compliance_rate: float = 0.0
     orders_meeting_deadline: int = 0
+    # assigned orders delivered late (unassigned orders are orders_unassigned)
     orders_missing_deadline: int = 0
     orders_fully_on_time_rate: float = 0.0
 
     # Deadline compliance (package-level)
+    # on-time packages / ALL packages in the scenario
     package_deadline_compliance_rate: float = 0.0
+    # on-time packages / packages on assigned orders only
+    assigned_package_deadline_compliance_rate: float = 0.0
     packages_on_time: int = 0
     packages_missing_deadline: int = 0
     total_packages_checked: int = 0
+    total_packages: int = 0
 
     # Validation
     validation_rejections: int = 0
@@ -102,6 +117,7 @@ def compute_experiment_metrics(
     m.orders_assigned = len(result.assignments)
     m.orders_unassigned = len(result.unassigned_orders)
     m.total_orders = len(orders)
+    m.total_packages = sum(o.total_packages for o in orders)
     m.assignment_rate = m.orders_assigned / m.total_orders * 100 if m.total_orders else 0
 
     # Averages
@@ -161,17 +177,19 @@ def compute_experiment_metrics(
 
         m.orders_meeting_deadline = orders_fully_on_time
         m.orders_missing_deadline = orders_checked - orders_fully_on_time
-        m.deadline_compliance_rate = (
+        m.assigned_deadline_compliance_rate = (
             orders_fully_on_time / orders_checked * 100
         ) if orders_checked else 0
-        m.orders_fully_on_time_rate = m.deadline_compliance_rate
 
         m.packages_on_time = total_pkgs_on_time
         m.packages_missing_deadline = total_pkgs_late
         m.total_packages_checked = total_pkgs_checked
-        m.package_deadline_compliance_rate = (
+        m.assigned_package_deadline_compliance_rate = (
             total_pkgs_on_time / total_pkgs_checked * 100
         ) if total_pkgs_checked else 0
+        m.package_deadline_compliance_rate = (
+            total_pkgs_on_time / m.total_packages * 100
+        ) if m.total_packages else 0
 
     else:
         # Fallback: proxy using dispatched_at (for legacy DispatchResults)
@@ -187,8 +205,15 @@ def compute_experiment_metrics(
                     meeting_deadline += 1
         m.orders_meeting_deadline = meeting_deadline
         m.orders_missing_deadline = total_checked - meeting_deadline
-        m.deadline_compliance_rate = (meeting_deadline / total_checked * 100) if total_checked else 0
-        m.orders_fully_on_time_rate = m.deadline_compliance_rate
+        m.assigned_deadline_compliance_rate = (
+            meeting_deadline / total_checked * 100
+        ) if total_checked else 0
+
+    # Headline order rate: every order in the scenario is in the denominator.
+    m.deadline_compliance_rate = (
+        m.orders_meeting_deadline / m.total_orders * 100
+    ) if m.total_orders else 0
+    m.orders_fully_on_time_rate = m.deadline_compliance_rate
 
     # Validation rejections
     m.validation_rejections = result.validation_rejections

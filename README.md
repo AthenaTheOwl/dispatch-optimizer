@@ -42,6 +42,19 @@ python -m pytest -q
 
 The tests cover route evaluation, event-driven dispatch stamping, comparison parity, experiment sweeps, and multi-seed no-silent-miss cases.
 
+## Scorecard
+
+`python -m app.report` writes `reports/scorecard.jsonl`: four cohorts, three seeded scenarios each, greedy against Hungarian. The on-time rate divides on-time orders by every order in the scenario, so an order that is never assigned counts as not on time.
+
+| Cohort | Drivers / orders | Greedy assigned | Greedy on time (all orders) | Hungarian assigned | Hungarian on time (all orders) |
+|---|---|---:|---:|---:|---:|
+| balanced | 12 / 20 | 63.3% | 63.3% | 63.3% | 63.3% |
+| understaffed | 6 / 20 | 46.7% | 46.7% | 48.3% | 48.3% |
+| high-volume | 12 / 40 | 56.7% | 56.7% | 59.2% | 59.2% |
+| overstaffed | 20 / 10 | 83.3% | 83.3% | 83.3% | 83.3% |
+
+The scorecard also keeps `mean_assigned_deadline_compliance_rate`, on-time orders over assigned orders only. It is 100.0 in every row because the engine only dispatches routes that meet every deadline, so it says nothing about the 17 to 53% of orders that are never served. An earlier scorecard published that assigned-only figure as `mean_deadline_compliance_rate` and showed 100.0 in every cohort. The on-time rate equals the assignment rate here for the same reason, so in this scorecard it scores the same thing twice when picking the overall winner (Hungarian, before and after the change).
+
 ## Constraint finder
 
 `experiments.constraint` splits every order's life into time spent waiting and time spent being worked, names the stage everything queues for, and shows what happens to that queue when orders arrive twice as fast.
@@ -61,6 +74,8 @@ It only reads simulation results. The engine, the solvers, and the scorecard are
 The binding stage holds the largest share of waiting minutes. An order that times out counts as queue wait only if some idle driver on the roster could have served it. Orders that no driver can carry in time are reported separately, because no queue was going to fix them. The second run pulls every arrival toward 08:00 by the speed-up factor. Deadlines move with their orders. Shifts stay put.
 
 At the settings above, greedy dispatch starts with waiting split almost evenly: `travel_to_pickup` holds 51%, the queue 49%. With arrivals compressed, the queue holds 59% and 21 orders give up waiting instead of 13. Across seeds 1 to 10 at these settings, the binding stage moves from `travel_to_pickup` to `queue_for_assignment` on six seeds and never moves the other way. At 6 drivers and 40 orders, seed 7 holds at `travel_to_pickup`, because doubling the arrival rate does not grow that fleet's queue.
+
+[October method update: Compare dispatch policies on the same realized world](docs/paired-stress-experiments.md).
 
 ## Live demo
 
@@ -121,7 +136,3 @@ static/
 ## License
 
 MIT.
-
-## Method update
-
-[October method update: Compare dispatch policies on the same realized world](docs/paired-stress-experiments.md).
